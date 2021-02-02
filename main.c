@@ -8,13 +8,18 @@
 #include <sys/types.h>
 #include <netdb.h>
 
+#define BUFSIZE 1024
 #define PORT 8080
 #define N_BACKLOG 64
 
+uint8_t buf[BUFSIZE];
+char method[BUFSIZE];
+char uri[BUFSIZE];
+char version[BUFSIZE];
+
+
 void perror_die(const char *s) {
-  char *err;
-  sprintf(err, "ERROR: %s\n", s);
-  perror(err);
+  perror(s);
   exit(EXIT_FAILURE);
 }
 
@@ -46,32 +51,54 @@ int listen_socket(int portnum) {
   return sockfd;
 }
 
-void serve_connection(int sockfd) {
-  while (1) {
-    uint8_t buf[1024];
-    int len = recv(sockfd, buf, sizeof buf, 0);
-    buf[len] = '\0';
-    printf("%s\n", buf);
-    if (send(sockfd, "received\n", 9, 0) < 1) {
-      perror_die("on send");
-    }
+void serve_connection(int sockfd) {  
+  FILE *stream = fdopen(sockfd, "r+");
+
+  if (stream == NULL) {
+    perror_die("on fdopen");
   }
 
+  fgets(buf, BUFSIZE, stream);
+  printf("%s", buf);
+  sscanf(buf, "%s %s %s\n", method, uri, version);
+
+  fgets(buf, BUFSIZE, stream);
+  printf("%s", buf);
+  while (strcmp(buf, "\r\n")) {
+    fgets(buf, BUFSIZE, stream);
+    printf("%s", buf);
+  }
+
+  // Request Line
+  fprintf(stream, "HTTP/1.1 200 OK\r\n");
+
+  // Header
+  fprintf(stream, "Server: KTK's Web Server\r\n");
+  fprintf(stream, "Content-length: 12\r\n");
+  fprintf(stream, "Content-type: text/html\r\n");
+  fprintf(stream, "\r\n");
+  
+  // Body
+  fprintf(stream, "Hello, World!");
+  fprintf(stream, "\r\n");
+  fflush(stream);
+  fclose(stream);
+  close(sockfd);
 }
 
 int main(int argc, const char *argv[]) {
-  const int sockfd = listen_socket(PORT);
+  const int server_sockfd = listen_socket(PORT);
 
   while (1) {
     struct sockaddr_in peer_addr;
     socklen_t peer_addr_len = sizeof(peer_addr);
 
-    int newsockfd = accept(sockfd, (struct sockaddr*)&peer_addr, &peer_addr_len);
-    if (newsockfd < 0) {
+    int peer_sockfd = accept(server_sockfd, (struct sockaddr*)&peer_addr, &peer_addr_len);
+    if (peer_sockfd < 0) {
       perror_die("on accept");
     }
-
-    serve_connection(newsockfd);
+    serve_connection(peer_sockfd);
+    printf("peer done\n");
   }
 
   printf("END\n");
