@@ -11,7 +11,7 @@
 #include <netdb.h>
 #include <errno.h>
 
-#define BUFSIZE 2048
+#define BUFSIZE 1024
 #define PORT 8080
 #define N_BACKLOG 64
 
@@ -20,6 +20,7 @@ char method[BUFSIZE];
 char uri[BUFSIZE];
 char version[BUFSIZE];
 char filename[BUFSIZE];
+char params[BUFSIZE];
 
 void perror_die(const char *s) {
   perror(s);
@@ -88,6 +89,13 @@ void serve_connection(int sockfd) {
     // printf("%s", buf);
   }
 
+  char *p = strstr(uri, "?");
+  if (p) {
+    strcpy(params, p+1);
+    *p = '\0';
+  } else {
+    strcpy(params, "");
+  }
   strcpy(filename, ".");
   strcat(filename, uri);
 
@@ -108,6 +116,7 @@ void serve_connection(int sockfd) {
   }
 
   char *filetype;
+  int is_static = 1;
 
   if (strstr(filename, ".html")) {
     filetype = "text/html";
@@ -119,18 +128,47 @@ void serve_connection(int sockfd) {
     filetype = "image/jpeg";
   } else if (strstr(filename, ".png")) {
     filetype = "image/png";
+  } else if (strstr(filename, ".php")) {
+    filetype = "text/html";
+    is_static = 0;
   } else {
     filetype = "text/pain";
   }
 
-  write_header(stream, 200, "OK", stat_buf.st_size, filetype);
-  
-  // Body
-  int fd = open(filename, O_RDONLY);
-  char *p = mmap(0, stat_buf.st_size, PROT_READ, MAP_PRIVATE, fd, 0); // map file to memory
-  if ((long int)p > 0) {
-    fwrite(p, 1, stat_buf.st_size, stream);
-    munmap(p, stat_buf.st_size); // free memory
+  if (is_static) {
+    write_header(stream, 200, "OK", stat_buf.st_size, filetype);
+    
+    // Body
+    int fd = open(filename, O_RDONLY);
+    char *p = mmap(0, stat_buf.st_size, PROT_READ, MAP_PRIVATE, fd, 0); // map file to memory
+    if ((long int)p > 0) {
+      fwrite(p, 1, stat_buf.st_size, stream);
+      munmap(p, stat_buf.st_size); // free memory
+    }
+  } else {
+    fprintf(stream, "HTTP/1.1 200 OK\r\n");
+    fflush(stream);
+
+    setenv("QUERY_STRING", params, 1);
+    setenv("REDIRECT_STATUS", "200", 1);
+    setenv("REQUEST_METHOD", method, 1);
+    setenv("GATEWAY_INTERFACE", "CGI/1.1", 1);
+    setenv("SCRIPT_FILENAME", filename, 1);
+
+    int wait_status;
+    int pid = fork();
+    printf("%d %s %s\n", pid, method, filename);
+    if (pid < 0) {
+      perror_die("on fork");
+    } else if (pid > 0) {
+      wait(&wait_status);
+    } else {
+      dup2(sockfd, 1);
+      dup2(sockfd, 2);
+      if (execl("/usr/bin/php-cgi", filename, (char *)NULL) < 0) {
+        perror_die("on execve");
+      }
+    }
   }
 
   // fprintf(stream, "Hello, World!");
