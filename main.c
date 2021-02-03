@@ -4,7 +4,9 @@
 #include <stdlib.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/mman.h>
 #include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <netdb.h>
 
@@ -16,7 +18,7 @@ uint8_t buf[BUFSIZE];
 char method[BUFSIZE];
 char uri[BUFSIZE];
 char version[BUFSIZE];
-
+char filename[BUFSIZE];
 
 void perror_die(const char *s) {
   perror(s);
@@ -24,13 +26,13 @@ void perror_die(const char *s) {
 }
 
 int listen_socket(int portnum) {
-  int sockfd = socket(AF_INET, SOCK_STREAM, 0);
+  int sockfd = socket(AF_INET, SOCK_STREAM, 0); // domain(ipv4), type(two-way), protocol(?)
   if (sockfd < 0) {
     perror_die("opening socket");
   }
 
   int opt = 1;
-  if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) {
+  if (setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt)) < 0) { // socket(file_descriptor), level(), option_name(), option_value(), socklen_t()
     perror_die("on setsockopt");
   }
   
@@ -40,7 +42,7 @@ int listen_socket(int portnum) {
   serv_addr.sin_addr.s_addr = INADDR_ANY;
   serv_addr.sin_port = htons(portnum);
 
-  if (bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) {
+  if (bind(sockfd, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) < 0) { // socket(file_descriptor), struct_addr(), addr_len()
     perror_die("on bind");
   }
 
@@ -69,19 +71,40 @@ void serve_connection(int sockfd) {
     printf("%s", buf);
   }
 
+  strcpy(filename, ".");
+  strcat(filename, uri);
+
+  if (strcmp(uri, "/") == 0) {
+    strcpy(filename, "index.html");
+  }
+
+  printf("%s\n", filename);
+
+  struct stat stat_buf;
+  if (stat(filename, &stat_buf) < 0) {
+    printf("404 not found");
+    fclose(stream);
+    return;
+  }  
+  
   // Request Line
   fprintf(stream, "HTTP/1.1 200 OK\r\n");
 
   // Header
   fprintf(stream, "Server: KTK's Web Server\r\n");
-  fprintf(stream, "Content-length: 12\r\n");
+  fprintf(stream, "Content-length: %ld\r\n", stat_buf.st_size);
   fprintf(stream, "Content-type: text/html\r\n");
   fprintf(stream, "\r\n");
+  fflush(stream);
   
   // Body
-  fprintf(stream, "Hello, World!");
-  fprintf(stream, "\r\n");
-  fflush(stream);
+  int fd = open(filename, O_RDONLY);
+  char *p = mmap(0, stat_buf.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  fwrite(p, 1, stat_buf.st_size, stream);
+  munmap(p, stat_buf.st_size);
+
+  // fprintf(stream, "Hello, World!");
+  // fprintf(stream, "\r\n");
   fclose(stream);
   close(sockfd);
 }
