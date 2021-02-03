@@ -1,3 +1,4 @@
+#include <bits/stdc++.h>
 #include <fcntl.h>
 #include <stdarg.h>
 #include <stdio.h> 
@@ -9,13 +10,12 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <netdb.h>
-#include <errno.h>
 
-#define BUFSIZE 2048
+#define BUFSIZE 1024
 #define PORT 8080
 #define N_BACKLOG 64
 
-uint8_t buf[BUFSIZE];
+char buf[BUFSIZE];
 char method[BUFSIZE];
 char uri[BUFSIZE];
 char version[BUFSIZE];
@@ -54,21 +54,39 @@ int listen_socket(int portnum) {
   return sockfd;
 }
 
-void write_header(
-  FILE* stream,
-  int status_code,
-  const char *status_msg,
-  size_t content_len,
-  const char *content_type
-) {
-  fprintf(stream, "HTTP/1.1 %d %s\r\n", status_code, status_msg);
-  fprintf(stream, "Server: KTK's Web Server\r\n");
-  fprintf(stream, "Content-length: %ld\r\n", content_len);
-  fprintf(stream, "Content-type: %s\r\n", content_type);
-  fprintf(stream, "\r\n");
-  fflush(stream);
+class HttpResponse {
+public:
+  int status_code;
+  std::map<int, const char*> status_msg_mp = {
+    { 200, "OK" },
+    { 404, "Not Found"},
+  };
+  std::string header;
+  std::string body;
+  char *response;
+  HttpResponse(int status, char *header, char *body);
+  char *to_string();
+private:
+};
+
+HttpResponse::HttpResponse(int status, char *header, char *body, int body_len) {
+  sprintf(response, "HTTP/1.1 %d %s\r\n", status_code, status_msg_mp[status_code]);
+
+  // Header
+  sprintf(response, "Server: KTK's Web Server\r\n");
+  sprintf(response, "Content-length: %ld\r\n", body_len);
+  sprintf(response, "Content-type: text/html\r\n");
+  sprintf(response, "\r\n");
 }
 
+char *HttpResponse::to_string() {
+
+}
+
+class HttpRequest {
+public:
+private:
+};
 
 void serve_connection(int sockfd) {  
   FILE *stream = fdopen(sockfd, "r+");
@@ -78,14 +96,14 @@ void serve_connection(int sockfd) {
   }
 
   fgets(buf, BUFSIZE, stream);
-  // printf("%s", buf);
+  printf("%s", buf);
   sscanf(buf, "%s %s %s\n", method, uri, version);
 
   fgets(buf, BUFSIZE, stream);
-  // printf("%s", buf);
+  printf("%s", buf);
   while (strcmp(buf, "\r\n")) {
     fgets(buf, BUFSIZE, stream);
-    // printf("%s", buf);
+    printf("%s", buf);
   }
 
   strcpy(filename, ".");
@@ -95,43 +113,30 @@ void serve_connection(int sockfd) {
     strcpy(filename, "index.html");
   }
 
-  // printf("%s\n", filename);
-  
+  printf("%s\n", filename);
+
   struct stat stat_buf;
   if (stat(filename, &stat_buf) < 0) {
-    write_header(stream, 404, "Not Found", 13, "text/html");
-    fprintf(stream, "404 Not Found\r\n");
-    printf("404 not found\n");
+    printf("404 not found");
     fclose(stream);
-    close(sockfd);
     return;
-  }
+  }  
+  
+  // Request Line
+  fprintf(stream, "HTTP/1.1 200 OK\r\n");
 
-  char *filetype;
-
-  if (strstr(filename, ".html")) {
-    filetype = "text/html";
-  } else if (strstr(filename, ".js")) {
-    filetype = "text/javascript";
-  } else if (strstr(filename, ".css")) {
-    filetype = "text/css";
-  } else if (strstr(filename, ".jpg")) {
-    filetype = "image/jpeg";
-  } else if (strstr(filename, ".png")) {
-    filetype = "image/png";
-  } else {
-    filetype = "text/pain";
-  }
-
-  write_header(stream, 200, "OK", stat_buf.st_size, filetype);
+  // Header
+  fprintf(stream, "Server: KTK's Web Server\r\n");
+  fprintf(stream, "Content-length: %ld\r\n", stat_buf.st_size);
+  fprintf(stream, "Content-type: text/html\r\n");
+  fprintf(stream, "\r\n");
+  fflush(stream);
   
   // Body
   int fd = open(filename, O_RDONLY);
-  char *p = mmap(0, stat_buf.st_size, PROT_READ, MAP_PRIVATE, fd, 0); // map file to memory
-  if ((long int)p > 0) {
-    fwrite(p, 1, stat_buf.st_size, stream);
-    munmap(p, stat_buf.st_size); // free memory
-  }
+  char *p = (char *)mmap(0, stat_buf.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  fwrite(p, 1, stat_buf.st_size, stream);
+  munmap(p, stat_buf.st_size);
 
   // fprintf(stream, "Hello, World!");
   // fprintf(stream, "\r\n");
@@ -139,9 +144,10 @@ void serve_connection(int sockfd) {
   close(sockfd);
 }
 
+
 int main(int argc, const char *argv[]) {
   const int server_sockfd = listen_socket(PORT);
-  
+
   while (1) {
     struct sockaddr_in peer_addr;
     socklen_t peer_addr_len = sizeof(peer_addr);
