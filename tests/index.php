@@ -7,10 +7,8 @@
   <link rel="stylesheet" href="index.css">
 </head>
 <body>
-  <h1>Hello, World!</h1>
+  <h1>Hello, <?php echo $_POST['name'] ?>!</h1>
   <p>Time spent: <span id="count">0</span>sec</p>
-  <img src="img/image.png">
-  <img src="img/largeImg.jpg">
   <script src="index.js"></script>
 </body>
 </html>

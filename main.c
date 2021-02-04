@@ -21,6 +21,9 @@ char uri[BUFSIZE];
 char version[BUFSIZE];
 char filename[BUFSIZE];
 char params[BUFSIZE];
+char body[BUFSIZE];
+char content_len[BUFSIZE];
+char content_type[BUFSIZE];
 
 void perror_die(const char *s) {
   perror(s);
@@ -70,7 +73,6 @@ void write_header(
   fflush(stream);
 }
 
-
 void serve_connection(int sockfd) {  
   FILE *stream = fdopen(sockfd, "r+");
 
@@ -79,15 +81,36 @@ void serve_connection(int sockfd) {
   }
 
   fgets(buf, BUFSIZE, stream);
-  // printf("%s", buf);
+  printf("%s", buf);
   sscanf(buf, "%s %s %s\n", method, uri, version);
 
-  fgets(buf, BUFSIZE, stream);
-  // printf("%s", buf);
+  // Parsing Header
   while (strcmp(buf, "\r\n")) {
     fgets(buf, BUFSIZE, stream);
+    
+    char *p;
+    if (p = strstr(buf, "Content-Length")) {
+      p += 16;
+      strcpy(content_len, p);
+      content_len[strlen(content_len)-2] = '\0';
+      // printf("%s", content_len);
+    }
+    if (p = strstr(buf, "Content-Type")) {
+      p += 14;
+      strcpy(content_type, p);
+      content_type[strlen(content_type)-2] = '\0';
+    }
     // printf("%s", buf);
   }
+
+  if (strcmp(method, "POST") == 0) {
+    char *temp;
+    fgets(buf, strtold(content_len, &temp)+1, stream);
+    strcpy(body, buf);
+    // printf("%s\n", buf);
+  }
+
+  // printf("%s\n", body);
 
   char *p = strstr(uri, "?");
   if (p) {
@@ -154,15 +177,36 @@ void serve_connection(int sockfd) {
     setenv("REQUEST_METHOD", method, 1);
     setenv("GATEWAY_INTERFACE", "CGI/1.1", 1);
     setenv("SCRIPT_FILENAME", filename, 1);
+    if (strcmp(method, "POST") == 0) {
+      setenv("CONTENT_LENGTH", content_len, 1);
+      setenv("CONTENT_TYPE", content_type, 1);
+    }
 
+    int pipefd[2];
+    if (pipe(pipefd) == -1) {
+      perror_die("on pipe");
+    }
+    
     int wait_status;
     int pid = fork();
     printf("%d %s %s\n", pid, method, filename);
     if (pid < 0) {
       perror_die("on fork");
     } else if (pid > 0) {
+      if (strcmp(method, "POST") == 0) {
+        close(pipefd[0]);
+        FILE *pipewrite = fdopen(pipefd[1], "w");
+        fprintf(pipewrite, "%s", body);
+        fflush(pipewrite);
+        fclose(pipewrite);
+      }
       wait(&wait_status);
     } else {
+      if (strcmp(method, "POST") == 0) {
+        close(pipefd[1]);
+        close(0);
+        dup2(pipefd[0], 0);
+      }
       dup2(sockfd, 1);
       dup2(sockfd, 2);
       if (execl("/usr/bin/php-cgi", filename, (char *)NULL) < 0) {

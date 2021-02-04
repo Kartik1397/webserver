@@ -7,8 +7,13 @@
   <link rel="stylesheet" href="index.css">
 </head>
 <body>
-  <h1>Hello, <?php echo $_GET['name'] ?>!</h1>
+  <h1>Hello, World!</h1>
   <p>Time spent: <span id="count">0</span>sec</p>
+  <form action="index.php" method="POST">
+    <label for="name">Enter Your Name:</label>
+    <input type="text" id="name" name="name">
+    <input type="submit" value="submit">
+  </form>
   <img src="img/image.png">
   <img src="img/largeImg.jpg">
   <script src="index.js"></script>
