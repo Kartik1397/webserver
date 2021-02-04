@@ -8,6 +8,7 @@
 #include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
 #include <netdb.h>
 #include <errno.h>
 
@@ -223,7 +224,7 @@ void serve_connection(int sockfd) {
 
 int main(int argc, const char *argv[]) {
   const int server_sockfd = listen_socket(PORT);
-  
+  printf("Listening on http://127.0.0.1:%d\n", PORT);
   while (1) {
     struct sockaddr_in peer_addr;
     socklen_t peer_addr_len = sizeof(peer_addr);
@@ -232,8 +233,20 @@ int main(int argc, const char *argv[]) {
     if (peer_sockfd < 0) {
       perror_die("on accept");
     }
+    
+    struct timespec tstart={0, 0}, tend={0, 0};
+    clock_gettime(CLOCK_MONOTONIC, &tstart);
+    clock_t start = clock();
+    time_t begin = time(NULL);
+    
     serve_connection(peer_sockfd);
-    printf("peer done\n");
+    
+    double cpu_time = ((double)(clock()-start)*1000) / CLOCKS_PER_SEC;
+    clock_gettime(CLOCK_MONOTONIC, &tend);
+    double real_time = ((double)tend.tv_sec*1000 + 1.0e-6*tend.tv_nsec) -
+                       ((double)tstart.tv_sec*1000 + 1.0e-6*tstart.tv_nsec);
+
+    printf("[ RT: %.2fms, CT: %.2fms ]\n\n", real_time, cpu_time);
   }
 
   printf("END\n");
