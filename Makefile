@@ -1,12 +1,12 @@
-CC=gcc
-DEPS = main.c
-OBJ = main.o
+CC = gcc
+CFLAGS = -g -pthread -Werror -Wall -Wextra
+BINS = ws
+OBJS = main.o queue.o
 
-ws: $(OBJ)
-	$(CC) -o $@ $^
+all: $(BINS)
 
-%.o: %.c $(DEPS)
-	$(CC) -c -o $@ $<
+ws: $(OBJS)
+	$(CC) $(CFLAGS) -o $@ $^
 
-clean: a.out
-	rm a.out
+%.o: %.c
+	$(CC) $(CFLAGS) -c -o $@ $^
