@@ -4,6 +4,7 @@
 #include <limits.h>
 #include <netdb.h>
 #include <pthread.h>
+#include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h> 
@@ -33,7 +34,12 @@ pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t condition_var = PTHREAD_COND_INITIALIZER;
 
 int reqCount = 1;
-int fpm_sockfd;
+volatile int fpm_sockfd;
+
+void intHandler() {
+  close(fpm_sockfd);
+  exit(EXIT_SUCCESS);
+}
 
 typedef struct {
   char *key;
@@ -51,11 +57,6 @@ void perror_die(const char *s) {
   perror(s);
   exit(EXIT_FAILURE);
 }
-
-
-// START fastcgi
-
-
 
 /*
  * Listening socket file number
@@ -174,6 +175,7 @@ typedef struct {
 } record_t;
 
 // Implementation
+
 byte get_byte(int pos, int value) {
   if (pos == 0) {
     return (byte)(value & 0xff);
@@ -572,6 +574,8 @@ void *server_thread() {
 }
 
 int main() {
+  signal(SIGINT, intHandler);
+
   const int server_sockfd = listen_socket(PORT);
   fpm_sockfd = fcgi_connect();
   printf("Listening on http://127.0.0.1:%d\n", PORT);
